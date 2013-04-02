@@ -1,0 +1,245 @@
+
+/*
+    注意：geohash的长度大于10，GEOHASH编码有问题。
+*/
+prompt
+prompt Creating function GEOHASH_BASE32
+prompt ================================
+prompt
+CREATE OR REPLACE FUNCTION geohash_base32(idx number) RETURN varchar2 is
+    ret varchar2(1);
+BEGIN
+    ret := CASE idx
+               WHEN 0 THEN
+                '0'
+               WHEN 1 THEN
+                '1'
+               WHEN 2 THEN
+                '2'
+               WHEN 3 THEN
+                '3'
+               WHEN 4 THEN
+                '4'
+               WHEN 5 THEN
+                '5'
+               WHEN 6 THEN
+                '6'
+               WHEN 7 THEN
+                '7'
+               WHEN 8 THEN
+                '8'
+               WHEN 9 THEN
+                '9'
+               WHEN 10 THEN
+                'b'
+               WHEN 11 THEN
+                'c'
+               WHEN 12 THEN
+                'd'
+               WHEN 13 THEN
+                'e'
+               WHEN 14 THEN
+                'f'
+               WHEN 15 THEN
+                'g'
+               WHEN 16 THEN
+                'h'
+               WHEN 17 THEN
+                'j'
+               WHEN 18 THEN
+                'k'
+               WHEN 19 THEN
+                'm'
+               WHEN 20 THEN
+                'n'
+               WHEN 21 THEN
+                'p'
+               WHEN 22 THEN
+                'q'
+               WHEN 23 THEN
+                'r'
+               WHEN 24 THEN
+                's'
+               WHEN 25 THEN
+                't'
+               WHEN 26 THEN
+                'u'
+               WHEN 27 THEN
+                'v'
+               WHEN 28 THEN
+                'w'
+               WHEN 29 THEN
+                'x'
+               WHEN 30 THEN
+                'y'
+               WHEN 31 THEN
+                'z'
+           END;
+    return ret;
+END;
+/
+
+prompt
+prompt Creating function GEOHASH_BASE32_INDEX
+prompt ======================================
+prompt
+CREATE OR REPLACE FUNCTION geohash_base32_index(ch in varCHAR2) RETURN number is
+    idx number default null;
+BEGIN
+    idx := CASE ch
+               WHEN '0' THEN
+                0
+               WHEN '1' THEN
+                1
+               WHEN '2' THEN
+                2
+               WHEN '3' THEN
+                3
+               WHEN '4' THEN
+                4
+               WHEN '5' THEN
+                5
+               WHEN '6' THEN
+                6
+               WHEN '7' THEN
+                7
+               WHEN '8' THEN
+                8
+               WHEN '9' THEN
+                9
+               WHEN 'b' THEN
+                10
+               WHEN 'c' THEN
+                11
+               WHEN 'd' THEN
+                12
+               WHEN 'e' THEN
+                13
+               WHEN 'f' THEN
+                14
+               WHEN 'g' THEN
+                15
+               WHEN 'h' THEN
+                16
+               WHEN 'j' THEN
+                17
+               WHEN 'k' THEN
+                18
+               WHEN 'm' THEN
+                19
+               WHEN 'n' THEN
+                20
+               WHEN 'p' THEN
+                21
+               WHEN 'q' THEN
+                22
+               WHEN 'r' THEN
+                23
+               WHEN 's' THEN
+                24
+               WHEN 't' THEN
+                25
+               WHEN 'u' THEN
+                26
+               WHEN 'v' THEN
+                27
+               WHEN 'w' THEN
+                28
+               WHEN 'x' THEN
+                29
+               WHEN 'y' THEN
+                30
+               WHEN 'z' THEN
+                31
+           END;
+    RETURN idx;
+END;
+/
+
+prompt
+prompt Creating function GEOHASH_BIT
+prompt =============================
+prompt
+CREATE OR REPLACE FUNCTION geohash_bit(idx number) RETURN varchar2 is
+    ret varchar2(2);
+BEGIN
+    ret := CASE idx
+               WHEN 0 THEN
+                '16'
+               WHEN 1 THEN
+                '8'
+               WHEN 2 THEN
+                '4'
+               WHEN 3 THEN
+                '2'
+               WHEN 4 THEN
+                '1'
+           END;
+    return ret;
+END;
+/
+
+prompt
+prompt Creating function GEOHASH_ENCODE
+prompt ================================
+prompt
+create or replace function geohash_encode(latitude number, longitude number, prec integer := 8)
+    return varchar2 is
+    lat_l          number(10, 7) default - 90.0;
+    lat_r          number(10, 7) default 90.0;
+    lon_t          number(10, 7) default - 180.0;
+    lon_b          number(10, 7) default 180.0;
+    a_bit          integer default 0;
+    bit_pos        integer default 0;
+    ch             char(1) default '';
+    ch_pos         integer default 0;
+    mid            number(10, 7) default null;
+    even           integer default 1;
+    geohash        varchar(10) default '';
+    geohash_length integer default 0;
+begin
+    if prec > 10 then
+        raise_application_error(20001, 'Parameter(prec) must <=10!');
+    end if;
+    while geohash_length < prec loop
+        if even = 1 then
+            mid := (lon_t + lon_b) / 2;
+            if mid < longitude then
+                a_bit  := geohash_bit(bit_pos);
+                ch_pos := (ch_pos + a_bit) - bitand(ch_pos, a_bit); -- ch_pos | bit
+                lon_t  := mid;
+            else
+                lon_b := mid;
+            end if;
+        else
+            mid := (lat_l + lat_r) / 2;
+            if mid < latitude then
+                a_bit  := geohash_bit(bit_pos);
+                ch_pos := (ch_pos + a_bit) - bitand(ch_pos, a_bit); --ch_pos | a_bit
+                lat_l  := mid;
+            else
+                lat_r := mid;
+            end if;
+        end if;
+    
+        if even = 1 then
+            even := 0;
+        else
+            even := 1;
+        end if;
+    
+        if bit_pos < 4 then
+            bit_pos := bit_pos + 1;
+        else
+            ch      := geohash_base32(ch_pos);
+            geohash := geohash || ch;
+            bit_pos := 0;
+            ch_pos  := 0;
+        end if;
+    
+        geohash_length := nvl(length(geohash), 0);
+    end loop;
+    return geohash;
+end;
+/
+
